@@ -3,6 +3,12 @@ import asyncio
 from typing import List, Dict, Optional
 import config
 from knowledge_base import PIYADE_RP_SYSTEM_PROMPT
+from security import (
+    SECURITY_WARNING_REPLY,
+    PROMPT_INJECTION_BARRIERS,
+    is_prompt_injection,
+    sanitize_user_input
+)
 
 class GeminiClient:
     def __init__(self, api_key: str = None, model: str = None):
@@ -34,23 +40,38 @@ class GeminiClient:
             )
             return False, fallback_text
 
-        # Gemini v1beta chat formatına dönüştür
+        # ── 1. GÜVENLİK KONTROLÜ: PROMPT INJECTION / JAILBREAK DENETİMİ ──
+        for msg in messages:
+            if msg.get("role") == "user":
+                raw_user_msg = msg.get("content", "")
+                if is_prompt_injection(raw_user_msg):
+                    print(f"[GÜVENLİK ENGELİ] Prompt Injection / Jailbreak tespit edildi! Kullanıcı: {user_name} -> {raw_user_msg}")
+                    return True, SECURITY_WARNING_REPLY
+
+        # ── 2. GÜVENLİ FORMATLAMA: KULLANICI GİRDİLERİNİ SİSTEM TALİMATLARINDAN AYRIŞTIR ──
         contents = []
         for msg in messages:
             role = "user" if msg.get("role") == "user" else "model"
             text = msg.get("content", "").strip()
             if text:
+                if role == "user":
+                    clean_text = sanitize_user_input(text)
+                    formatted_text = f"<user_query author=\"{user_name}\">\n{clean_text}\n</user_query>"
+                else:
+                    formatted_text = text
+
                 contents.append({
                     "role": role,
-                    "parts": [{"text": text}]
+                    "parts": [{"text": formatted_text}]
                 })
 
         if not contents:
             return False, "Soru içeriği boş iletildi. Lütfen sorunuzu detaylıca belirtiniz."
 
-        # Context-rich sistem promptu
+        # ── 3. SİSTEM PROMPTU VE ÇİFT KATMANLI KORUMA BARİYERLERİ ──
         system_text = (
             f"{PIYADE_RP_SYSTEM_PROMPT}\n\n"
+            f"{PROMPT_INJECTION_BARRIERS}\n\n"
             f"ŞU ANKİ DESTEK BİLETİ BİLGİLERİ:\n"
             f"- Kullanıcı Adı: {user_name}\n"
             f"- Bilet Kanalı: #{ticket_channel_name}\n"

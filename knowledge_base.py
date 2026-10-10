@@ -198,11 +198,17 @@ Ekonomi & Fiyatlar (USD):
 6. Asla başka oyunların veya sunucuların kurallarını uydurma. Sadece Piyade RP kurallarına sadık kal.
 """
 
+from security import is_prompt_injection, SECURITY_WARNING_REPLY
+
 def get_local_knowledge_reply(prompt: str, user_name: str = "Değerli Üyemiz") -> str | None:
     """
     Gemini API erişilemediğinde veya yanıt geciktiğinde yerel bilgi bankasından
     Piyade RP sistemlerine uygun kusursuz ve anında yanıt üretir.
     """
+    # Siber Güvenlik Kontrolü: Prompt injection denemelerini derhal engelle
+    if is_prompt_injection(prompt):
+        return SECURITY_WARNING_REPLY
+
     t = prompt.lower().strip()
 
     # 1. ER:LC Katılım Kodu / Sunucu Kodu
