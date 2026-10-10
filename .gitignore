@@ -1,0 +1,22 @@
+# Ortam Değişkenleri ve Gizli Dosyalar
+.env
+.env.local
+
+# Python Önbellek Dosyaları
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Veri Dosyaları
+data/*.json
+
+# Editör Dosyaları
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# İşletim Sistemi Dosyaları
+.DS_Store
+Thumbs.db
