@@ -6,12 +6,14 @@ from knowledge_base import PIYADE_RP_SYSTEM_PROMPT
 
 class GeminiClient:
     def __init__(self, api_key: str = None, model: str = None):
-        self.api_key = api_key or config.GEMINI_API_KEY
-        self.model = model or config.GEMINI_MODEL
+        raw_key = api_key or config.GEMINI_API_KEY
+        # Anahtarı tırnak ve boşluklardan tamamen arındır
+        self.api_key = raw_key.strip().strip("'\"") if raw_key else ""
+        self.model = (model or config.GEMINI_MODEL or "gemini-2.0-flash").strip().strip("'\"")
         self.base_url = "https://generativelanguage.googleapis.com/v1beta/models"
 
     def has_api_key(self) -> bool:
-        return bool(self.api_key and self.api_key.strip())
+        return bool(self.api_key and len(self.api_key) > 10)
 
     async def generate_response(
         self,
@@ -24,11 +26,9 @@ class GeminiClient:
         Dönüş: (basarili_mi: bool, yanit_metni: str)
         """
         if not self.has_api_key():
-            # API anahtarı tanımlanmamışsa profesyonel yedek metin
             fallback_text = (
                 f"Merhaba **{user_name}**,\n\n"
-                "Destek talebiniz başarıyla kayıt altına alınmıştır. "
-                "Yapay zeka asistanı şu anda bekleme modundadır.\n\n"
+                "Destek talebiniz başarıyla kayıt altına alınmıştır.\n\n"
                 "🛡️ **Yetkililerimiz en kısa sürede sizinle ilgilenecektir.** "
                 "Lütfen bu süreçte talebinizle ilgili detayları veya kanıtlarınızı paylaşınız."
             )
@@ -47,8 +47,6 @@ class GeminiClient:
 
         if not contents:
             return False, "Soru içeriği boş iletildi. Lütfen sorunuzu detaylıca belirtiniz."
-
-        endpoint = f"{self.base_url}/{self.model}:generateContent?key={self.api_key}"
 
         # Context-rich sistem promptu
         system_text = (
@@ -73,42 +71,72 @@ class GeminiClient:
             }
         }
 
-        # Yeniden deneme mekanizması (3 deneme)
-        for attempt in range(3):
-            try:
-                timeout = aiohttp.ClientTimeout(total=30)
-                async with aiohttp.ClientSession(timeout=timeout) as session:
-                    async with session.post(endpoint, json=payload) as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            candidates = data.get("candidates", [])
-                            if candidates:
-                                parts = candidates[0].get("content", {}).get("parts", [])
-                                if parts:
-                                    reply = parts[0].get("text", "").strip()
-                                    if reply:
-                                        return True, reply
+        # Resmi Google Gemini başlıkları (x-goog-api-key)
+        headers = {
+            "x-goog-api-key": self.api_key,
+            "Content-Type": "application/json"
+        }
 
-                            return False, (
-                                "Yanıt üretilemedi. "
-                                "🛡️ **Yetkililerimiz en kısa sürede sizinle ilgilenecektir.**"
-                            )
+        # Model alternatifleri (varsayılan model desteklenmezse sırayla dener)
+        candidate_models = [self.model, "gemini-2.0-flash", "gemini-1.5-flash"]
+        # Tekrar edenleri temizle
+        models_to_try = []
+        for m in candidate_models:
+            if m not in models_to_try:
+                models_to_try.append(m)
 
-                        elif resp.status in (429, 503, 500):
-                            # Rate limit veya geçici sunucu hatası - bekle ve tekrar dene
-                            await asyncio.sleep(2 * (attempt + 1))
-                            continue
-                        else:
-                            error_text = await resp.text()
-                            print(f"[Gemini API Hata]: HTTP {resp.status} - {error_text}")
-                            break
-            except asyncio.TimeoutError:
-                await asyncio.sleep(1)
-            except Exception as e:
-                print(f"[Gemini API Exception]: {e}")
-                break
+        for current_model in models_to_try:
+            endpoint = f"{self.base_url}/{current_model}:generateContent?key={self.api_key}"
 
-        # Başarısız olursa kullanıcıya profesyonel devir mesajı ver
+            for attempt in range(2):
+                try:
+                    timeout = aiohttp.ClientTimeout(total=25)
+                    async with aiohttp.ClientSession(timeout=timeout) as session:
+                        async with session.post(endpoint, json=payload, headers=headers) as resp:
+                            if resp.status == 200:
+                                data = await resp.json()
+                                candidates = data.get("candidates", [])
+                                if candidates:
+                                    parts = candidates[0].get("content", {}).get("parts", [])
+                                    if parts:
+                                        reply = parts[0].get("text", "").strip()
+                                        if reply:
+                                            return True, reply
+
+                                return False, (
+                                    "Yanıt üretilemedi. "
+                                    "🛡️ **Yetkililerimiz en kısa sürede sizinle ilgilenecektir.**"
+                                )
+
+                            elif resp.status == 401:
+                                error_text = await resp.text()
+                                print(f"[Gemini API Hata]: HTTP 401 - Yetkilendirme Hatası! Lütfen GEMINI_API_KEY değerini kontrol edin.")
+                                print(f"[Detay]: {error_text}")
+                                # 401 anahtar hatasıdır, model değiştirmek çözmez
+                                return False, (
+                                    f"Merhaba **{user_name}**,\n\n"
+                                    "Sorunuzu değerlendirirken teknik bir aksaklık yaşandı. "
+                                    "Destek talebiniz yetkili kadromuza iletilmiştir.\n\n"
+                                    "🛡️ **Yetkililerimiz en kısa sürede sizinle ilgilenecektir.** "
+                                    "Lütfen bekleyiniz, teşekkür ederiz."
+                                )
+
+                            elif resp.status in (404, 400):
+                                # Model bulunamadıysa bir sonraki modele geç
+                                error_text = await resp.text()
+                                print(f"[Gemini API]: {current_model} çalışmadı ({resp.status}), alternatif modele geçiliyor...")
+                                break
+
+                            elif resp.status in (429, 503, 500):
+                                await asyncio.sleep(1.5 * (attempt + 1))
+                                continue
+
+                except asyncio.TimeoutError:
+                    await asyncio.sleep(1)
+                except Exception as e:
+                    print(f"[Gemini API Exception]: {e}")
+                    break
+
         return False, (
             f"Merhaba **{user_name}**,\n\n"
             "Sorunuzu değerlendirirken teknik bir aksaklık yaşandı. "

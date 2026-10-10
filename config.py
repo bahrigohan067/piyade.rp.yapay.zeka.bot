@@ -16,8 +16,8 @@ TOKEN = os.getenv("TOKEN_AL_BOT") or os.getenv("TOKEN") or os.getenv("DISCORD_TO
 # Google Gemini API Anahtarı
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 
-# Gemini Modeli (Hızlı ve akıllı varsayılan model: gemini-2.5-flash)
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+# Gemini Modeli (En kararlı ve hızlı varsayılan model: gemini-2.0-flash)
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash").strip()
 
 # Sunucu ve Rol Ayarları (Piyade RP Sunucusu)
 GUILD_ID = int(os.getenv("GUILD_ID", "1529545898294509589"))
