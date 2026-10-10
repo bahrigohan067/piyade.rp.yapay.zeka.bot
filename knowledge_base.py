@@ -197,3 +197,119 @@ Ekonomi & Fiyatlar (USD):
 5. YETKİLİ ŞİKAYETLERİ VE İÇ KURALLAR: Yetkililere dair iç disiplin kurallarından (Y maddeleri vb.) normal üyelere KESİNLİKLE bahsetme. Yetkili işlemleriyle ilgili şikayet veya itirazlarda doğrudan Üst Yönetim incelemesini belirterek konuyu yetkililere devret.
 6. Asla başka oyunların veya sunucuların kurallarını uydurma. Sadece Piyade RP kurallarına sadık kal.
 """
+
+def get_local_knowledge_reply(prompt: str, user_name: str = "Değerli Üyemiz") -> str | None:
+    """
+    Gemini API erişilemediğinde veya yanıt geciktiğinde yerel bilgi bankasından
+    Piyade RP sistemlerine uygun kusursuz ve anında yanıt üretir.
+    """
+    t = prompt.lower().strip()
+
+    # 1. ER:LC Katılım Kodu / Sunucu Kodu
+    if any(k in t for k in ["kod", "kodu", "server code", "join code", "nasıl girerim", "nasıl katılırım", "ip"]):
+        if any(k in t for k in ["erlc", "er:lc", "oyun", "sunucu", "server", "roblox"]):
+            return (
+                f"Merhaba **{user_name}**,\n\n"
+                f"### 🎮 Piyade RP | ER:LC Katılım Bilgileri\n"
+                f"Sunucumuza ER:LC üzerinden katılmak için aşağıdaki adımları izleyebilirsiniz:\n\n"
+                f"> 🔑 **Sunucu Katılım Kodu:** `piyade`\n\n"
+                f"**Nasıl Katılınır?**\n"
+                f"1. Roblox'ta **Emergency Response: Liberty County (ER:LC)** oyununu başlatınız.\n"
+                f"2. Ana menüde yer alan **'Servers' (Sunucular)** sekmesine geçiniz.\n"
+                f"3. **'Join by Code'** butonuna tıklayıp kutucuğa `piyade` yazınız ve bağlanınız.\n\n"
+                f"📌 *Not: Sunucuya girebilmek için Whitelist onayınızın tamamlanmış olması gerekmektedir.*"
+            )
+
+    # 2. Kurallar / Sunucu Kuralları / Ceza Sistemi
+    if any(k in t for k in ["kural", "kurallar", "kuralları", "ceza", "uyarı", "puan"]):
+        if not any(k in t for k in ["rol hatası", "şikayet", "ihlal etti"]):
+            return (
+                f"Merhaba **{user_name}**,\n\n"
+                f"### ⚖️ Piyade Roleplay | Temel Kurallar & Ceza Sistemi\n"
+                f"Sunucumuzun huzur ve rol kalitesini korumak adına uygulanan kurallarımız:\n\n"
+                f"**📌 Genel Sunucu Kuralları (M Maddeleri):**\n"
+                f"• **M1:** Küfür ve hakaret etmek yasaktır. *(2 Ceza Puanı)*\n"
+                f"• **M2:** Reklam yapmak ve ticari hesap satışı kesinlikle yasaktır. *(🚨 Kalıcı Ban)*\n"
+                f"• **M4:** Taciz içeren davranışlar sergilemek yasaktır. *(2 Gün Timeout)*\n"
+                f"• **M5:** Kanalları amacı dışında kullanmak yasaktır. *(3 Ceza Puanı)*\n"
+                f"• **M7:** Kasten kavga ortamı yaratmak ve sataşmak yasaktır. *(4 Ceza Puanı)*\n"
+                f"• **M8:** Zorbalık yapmak ve üyeleri rahatsız etmek yasaktır. *(5 Ceza Puanı)*\n"
+                f"• **M10 / M11:** +18 içerik, ırkçılık ve ayrımcılık yasaktır. *(1 Gün Timeout)*\n"
+                f"• **M13:** 3. parti hile, makro ve yazılım kullanımı yasaktır. *(1 Gün Timeout)*\n\n"
+                f"**📌 Düzen Kuralları (D Maddeleri):**\n"
+                f"• **D1 / D2 / D3:** Duyuru kanallarına flood atmak, ses panelleri ve bot komutlarını spamlamak yasaktır. *(3 Ceza Puanı)*\n\n"
+                f"**📊 Ceza Puanı Kademeleri:**\n"
+                f"• **3-5 Puan:** Uyarı 1 | **6-8 Puan:** Uyarı 2 | **9-11 Puan:** Uyarı 3\n"
+                f"• **10 Puan:** 3 Gün Timeout | **12-14 Puan:** Uyarı 4 | **15+ Puan:** Uyarı 5 + 1 Hafta Jail\n"
+                f"• 💡 *30 gün boyunca yeni ceza almayan üyelerin puanları otomatik sıfırlanır.*\n\n"
+                f"Detaylı liste için: <#1532828330380890452> (Genel Kurallar) kanalını inceleyebilirsiniz."
+            )
+
+    # 3. Rol Terimleri (RP Terimleri)
+    if any(k in t for k in ["rp terim", "rol terim", "frp", "fear rp", "rdm", "vdm", "cop bait", "nlr", "combat log", "power gaming", "meta gaming"]):
+        return (
+            f"Merhaba **{user_name}**,\n\n"
+            f"### 🎭 Piyade RP | Temel Roleplay Terimleri\n\n"
+            f"• **RM1 — Fail RP (FRP) [3 Puan]:** Mantık dışı rol yapmak (Ağır yaralıyken koşmak vb.).\n"
+            f"• **RM2 — Fear RP [3 Puan]:** Can korkusunu rolde hissetmemek (Silah doğrultulmuşken kaçmak vb.).\n"
+            f"• **RM3 — Cop Trigger / Cop-Bait [2 Puan]:** Polisi sebepsiz yere kışkırtmak.\n"
+            f"• **RM4 — New Life Rule (NLR) [4 Puan]:** Öldükten sonra eski olayı ve katili hatırlamamak kuralı.\n"
+            f"• **RM6 — Combat Log (CL) [3 Puan]:** Rolden veya tutuklanmaktan kaçmak için oyundan çıkmak.\n"
+            f"• **RM7 — Meta Gaming (MG) [4 Puan]:** Rol dışı bilgiyi (Discord/yayın) rol içine aktarmak.\n"
+            f"• **RM8 — Power Gaming (PG) [3 Puan]:** Karşı tarafa tepki hakkı tanımayan imkansız eylemler.\n"
+            f"• **RM11 — VDM [3 Puan]:** Aracı bir silah gibi kullanıp insanları ezmek.\n"
+            f"• **RM14 — RDM [3 Puan]:** Sebepsizce ve rolsüz adam öldürmek.\n\n"
+            f"Tüm terimler ve örnekler için <#1554940447452037192> kanalını ziyaret edebilirsiniz."
+        )
+
+    # 4. Kayıt & Whitelist Adımları
+    if any(k in t for k in ["kayıt", "kayit", "whitelist", "wl", "başvuru", "basvuru", "nasıl üye", "karakter"]):
+        return (
+            f"Merhaba **{user_name}**,\n\n"
+            f"### 📝 Piyade Roleplay | Adım Adım Kayıt Rehberi\n\n"
+            f"Sunucumuzda roleplay deneyimine katılmak için 3 basit adımı tamamlamanız yeterlidir:\n\n"
+            f"1️⃣ **İlk Başvuru Formu:**\n"
+            f"<#1532831582753128530> kanalına giderek **'Kayıt Ol'** butonuna tıklayınız. Gerçek Ad, Roblox Adı ve Cinsiyet bilgilerinizi giriniz.\n\n"
+            f"2️⃣ **Roblox Grubu Doğrulaması:**\n"
+            f"Başvurunuz onaylandığında <#1554038042157654016> kanalındaki Roblox Grubumuza katılma isteği atınız ve **'✅ Hesabımı Onayla'** butonuna basınız.\n\n"
+            f"3️⃣ **Karakter Formu:**\n"
+            f"Kayıt konunuzda beliren **'Karakter Oluştur'** formu ile karakter adı ve yaşınızı (+18) belirleyiniz.\n\n"
+            f"🎉 Yetkili onayının ardından **Whitelist** rolünüz teslim edilecek ve sunucuya giriş hakkı kazanacaksınız!"
+        )
+
+    # 5. Kanalları Görememe Sorunu
+    if any(k in t for k in ["göremiyorum", "goremiyorum", "kanal yok", "kanallar gözükmüyor", "nerede", "bulamadım"]):
+        return (
+            f"Merhaba **{user_name}**,\n\n"
+            f"### 🔍 Kanalları Göremiyorsanız Yapmanız Gerekenler\n\n"
+            f"Discord'un sunucu kanallarını gizleme özelliği nedeniyle bazı kanallar sizde kapalı olabilir:\n\n"
+            f"1. Discord penceresinin sol üst kısmındaki **'Piyade RP | Los Angeles'** sunucu adına tıklayınız.\n"
+            f"2. Açılan menüden **'Tüm Kanalları Göster (Show All Channels)'** seçeneğini işaretleyiniz.\n"
+            f"3. Kanallarınız anında görünür hale gelecektir.\n\n"
+            f"💡 Ayrıca Whitelist rolünüz yoksa kayıt kanalları dışındaki kısımlar gizlidir. Kayıt olmak için: <#1532831582753128530>"
+        )
+
+    # 6. VS / Kapışma Sistemi
+    if any(k in t for k in ["vs", "kapışma", "kapisma", "1v1", "düello", "duello"]):
+        return (
+            f"Merhaba **{user_name}**,\n\n"
+            f"### ⚔️ Piyade RP | VS (1v1 Kapışma) Sistemi\n\n"
+            f"• **VS Talebi Açma:** <#1537136926287593503> kanalından talep oluşturabilirsiniz.\n"
+            f"• **Önemli Kural:** VS kapışmaları roleplay akışından **tamamen bağımsızdır**! Yalnızca bireysel Kademe (Rank) yükseltmek içindir.\n"
+            f"• **Türler:** Silahlı düello (PvP) ve Araç kontrolü (Drive).\n"
+            f"• **Sonuçlar:** Kazananlar <#1537142672953708685> kanalında duyurulur ve kademe atlar."
+        )
+
+    # 7. Çete / Birlik / İllegal
+    if any(k in t for k in ["çete", "cete", "birlik", "gang", "kartel", "meth", "soygun"]):
+        return (
+            f"Merhaba **{user_name}**,\n\n"
+            f"### 🏴‍☠️ Piyade RP | Çete & İllegal Sistemleri\n\n"
+            f"• **Çete Değiştirme Kuralı:** Bir çeteden ayrılan veya atılan kişi **7 gün** boyunca başka bir çeteye giremez ve çete kuramaz!\n"
+            f"• **Meth Üretimi:** İllegal marketten malzeme alınıp üretilir. Hatalı işlemde patlama riski ve polise anında otomatik ihbar gider.\n"
+            f"• **Çete Uyarıları:** 3 uyarı alan çete lağvedilir ve bölgesi boşa çıkar.\n"
+            f"• **Safezone Kuralı:** Gun Shop, PD, FD, Hastane ve City Spawn alanlarında çatışmak veya soygun yapmak kesinlikle yasaktır."
+        )
+
+    return None
+

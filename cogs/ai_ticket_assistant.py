@@ -7,6 +7,7 @@ from discord.ext import commands
 from discord import app_commands
 import config
 from gemini_client import GeminiClient
+from knowledge_base import get_local_knowledge_reply
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 ANSWERED_FILE = os.path.join(DATA_DIR, "answered_tickets.json")
@@ -14,11 +15,38 @@ ANSWERED_FILE = os.path.join(DATA_DIR, "answered_tickets.json")
 class TicketActionsView(discord.ui.View):
     """
     Yapay zeka yanıtının altına eklenen interaktif butonlar.
+    Kullanıcı paneli sadece 1 KEZ kullanabilir (herhangi bir butona basıldığında panel tamamen kilitlenir).
     """
     def __init__(self, ticket_owner_id: int = None, cog_ref = None):
         super().__init__(timeout=None)
         self.ticket_owner_id = ticket_owner_id
         self.cog_ref = cog_ref
+
+    async def _disable_all_buttons(self, interaction: discord.Interaction):
+        """Paneldeki tüm butonları pasifleştirir ve mesajı günceller (Tek seferlik kullanım)."""
+        for item in self.children:
+            if isinstance(item, discord.ui.Button):
+                item.disabled = True
+        try:
+            if interaction.message:
+                await interaction.message.edit(view=self)
+        except Exception:
+            pass
+
+    async def _check_permission(self, interaction: discord.Interaction) -> bool:
+        """Sadece bileti açan kullanıcının veya yöneticinin butona basmasına izin verir."""
+        owner_id = self.ticket_owner_id
+        if not owner_id and self.cog_ref and interaction.channel:
+            owner_id = self.cog_ref.get_ticket_owner_id(interaction.channel)
+
+        if owner_id and interaction.user.id != owner_id:
+            if not interaction.user.guild_permissions.administrator:
+                await interaction.response.send_message(
+                    "⚠️ Bu paneli yalnızca bileti açan üye kullanabilir.",
+                    ephemeral=True
+                )
+                return False
+        return True
 
     @discord.ui.button(
         label="Yetkili Çağır",
@@ -27,6 +55,11 @@ class TicketActionsView(discord.ui.View):
         custom_id="btn_ai_call_staff"
     )
     async def call_staff(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check_permission(interaction):
+            return
+
+        await self._disable_all_buttons(interaction)
+
         guild = interaction.guild
         staff_role = guild.get_role(config.TICKET_YETKILI_ROL_ID) if guild else None
         staff_mention = staff_role.mention if staff_role else "Yetkililer"
@@ -55,6 +88,11 @@ class TicketActionsView(discord.ui.View):
         custom_id="btn_ai_problem_solved"
     )
     async def problem_solved(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check_permission(interaction):
+            return
+
+        await self._disable_all_buttons(interaction)
+
         embed = discord.Embed(
             title="🌸 Yardımcı Olabildiğimize Sevindik!",
             description=(
@@ -77,14 +115,27 @@ class TicketActionsView(discord.ui.View):
         custom_id="btn_ai_ask_again"
     )
     async def ask_again(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check_permission(interaction):
+            return
+
+        await self._disable_all_buttons(interaction)
+
         channel = interaction.channel
         if self.cog_ref and channel:
             self.cog_ref.unmark_answered(channel.id)
 
-        await interaction.response.send_message(
-            f"🤖 {interaction.user.mention}, yapay zeka tekrar dinlemeye alındı! Lütfen ek sorunuzu yazınız.",
-            ephemeral=True
+        embed = discord.Embed(
+            title="🤖 Yapay Zeka Dinlemede",
+            description=(
+                f"{interaction.user.mention}, yeni sorunuz için yapay zeka tekrar aktif edildi! 💬\n\n"
+                f"> Lütfen ek sorunuzu veya talebinizi bu kanala yazınız."
+            ),
+            color=config.COLOR_LIGHT_BLUE
         )
+        embed.set_footer(text="Piyade Roleplay Destek")
+        embed.timestamp = discord.utils.utcnow()
+
+        await interaction.response.send_message(embed=embed)
 
 
 class AITicketAssistant(commands.Cog):
@@ -357,79 +408,110 @@ class AITicketAssistant(commands.Cog):
             print(f"[AITicketAssistant] Düşünme mesajı gönderilemedi: {e}")
             return
 
-        # ── 2. Adım: Cevap Üretilirken Kanalı "Cevaplandı" Olarak Kilitle ──
+        # ── 2. Adım: Cevap Üretilirken Kanalı "Cevaplandı" Olarak Kilitle (1 Kez Yanıt) ──
         self.answered_channels.add(channel.id)
         self._save_cache()
 
-        # Discord 'yazıyor...' animasyonunu başlat
+        user_display_name = message.author.display_name
+
         try:
-            async with channel.typing():
-                # Sohbet Geçmişi
-                history = []
-                async for past_msg in channel.history(limit=8, before=thinking_msg):
+            # Sohbet Geçmişini Güvenli Al (before argümanı olmadan, cursor hatası önlenir)
+            history = []
+            try:
+                async for past_msg in channel.history(limit=6):
+                    if past_msg.id == thinking_msg.id:
+                        continue
                     if not past_msg.content:
                         continue
                     if past_msg.author == self.bot.user:
                         history.append({"role": "model", "content": past_msg.content})
                     elif not past_msg.author.bot:
                         history.append({"role": "user", "content": past_msg.content})
-
                 history.reverse()
-                history.append({"role": "user", "content": prompt_text})
+            except Exception:
+                pass
 
-                # Gemini AI Çağrısı
-                user_display_name = message.author.display_name
-                success, ai_reply = await self.gemini.generate_response(
-                    messages=history,
-                    user_name=user_display_name,
-                    ticket_channel_name=channel.name
+            history.append({"role": "user", "content": prompt_text})
+
+            # ── 3. Adım: Gemini AI Çağrısı (Maksimum 9 Saniye Sert Zaman Aşımı) ──
+            ai_reply = None
+            success = False
+            try:
+                success, ai_reply = await asyncio.wait_for(
+                    self.gemini.generate_response(
+                        messages=history,
+                        user_name=user_display_name,
+                        ticket_channel_name=channel.name
+                    ),
+                    timeout=9.0
+                )
+            except Exception as e:
+                print(f"[AITicketAssistant] Gemini çağrı zaman aşımı veya hatası: {e}")
+                success = False
+                ai_reply = None
+
+            # ── 4. Adım: Yapay Zeka Yanıt Vermezse Yerel Bilgi Bankasını Tara ──
+            if not success or not ai_reply or not ai_reply.strip():
+                local_reply = get_local_knowledge_reply(prompt_text, user_display_name)
+                if local_reply:
+                    success = True
+                    ai_reply = local_reply
+
+            # ── 5. Adım: Bot Soruyu Cevaplayamazsa Yetkiliye Yönlendir ──
+            needs_staff = False
+            if not success or not ai_reply or not ai_reply.strip():
+                needs_staff = True
+                ai_reply = (
+                    f"Merhaba **{user_display_name}**,\n\n"
+                    "İletmiş olduğunuz talep sunucu kayıtlarımızda doğrudan çözümlenemedi veya yetkili müdahalesi gerektiriyor.\n\n"
+                    "🛡️ **Yetkililerimiz en kısa sürede sizinle ilgilenecektir.**\n"
+                    "Lütfen yetkili ekibimiz biletinize dönüş yapana kadar sabırla bekleyiniz."
+                )
+            else:
+                # Yapay zeka cevabında yetkili devri gerektiren durumlar
+                if "yetkili" in ai_reply.lower() and ("ilgilen" in ai_reply.lower() or "müdahale" in ai_reply.lower() or "onay" in ai_reply.lower()):
+                    needs_staff = True
+
+            clean_reply = ai_reply.strip()
+            if len(clean_reply) > 3900:
+                clean_reply = clean_reply[:3850] + "\n\n*(Cevabın devamı için lütfen detay sorunuz...)*"
+
+            response_embed = discord.Embed(
+                title="💎 Piyade AI | Çözüm & Bilgilendirme",
+                description=clean_reply,
+                color=config.COLOR_LIGHT_BLUE
+            )
+
+            if message.guild.icon:
+                response_embed.set_thumbnail(url=message.guild.icon.url)
+
+            if needs_staff and "Yetkili Ekibi Bilgilendirmesi" not in clean_reply:
+                response_embed.add_field(
+                    name="🛡️ Yetkili Ekibi Bilgilendirmesi",
+                    value=(
+                        "Yetkililerimiz en kısa sürede sizinle ilgilenecektir.\n"
+                        "Gerekirse aşağıdaki **'Yetkili Çağır'** butonuna basarak yetkili ekibine doğrudan çağrı iletebilirsiniz."
+                    ),
+                    inline=False
                 )
 
-                # Yetkili Devri Kontrolü
-                needs_staff = (
-                    not success or
-                    "yetkili" in ai_reply.lower() and ("ilgilen" in ai_reply.lower() or "onay" in ai_reply.lower() or "müdahale" in ai_reply.lower())
-                )
+            response_embed.set_footer(text=f"Soruyu Soran: {user_display_name} • Piyade Roleplay Destek")
+            response_embed.timestamp = discord.utils.utcnow()
 
-                clean_reply = ai_reply
-                if len(clean_reply) > 3900:
-                    clean_reply = clean_reply[:3850] + "\n\n*(Cevabın devamı için lütfen detay sorunuz...)*"
-
-                response_embed = discord.Embed(
-                    title="💎 Piyade AI | Çözüm & Bilgilendirme",
-                    description=clean_reply,
-                    color=config.COLOR_LIGHT_BLUE
-                )
-
-                if message.guild.icon:
-                    response_embed.set_thumbnail(url=message.guild.icon.url)
-
-                if needs_staff:
-                    response_embed.add_field(
-                        name="🛡️ Yetkili Ekibi Bilgilendirmesi",
-                        value=(
-                            "Yetkililerimiz en kısa sürede sizinle ilgilenecektir.\n"
-                            "Gerekirse aşağıdaki **'Yetkili Çağır'** butonuna basarak yetkili ekibine doğrudan bildirim gönderebilirsiniz."
-                        ),
-                        inline=False
-                    )
-
-                response_embed.set_footer(text=f"Soruyu Soran: {user_display_name} • Piyade Roleplay Destek")
-                response_embed.timestamp = discord.utils.utcnow()
-
-                # ── 3. Adım: "Düşünüyor..." Mesajını Güncelle ve Butonları Ekle ──
-                view = TicketActionsView(ticket_owner_id=owner_id, cog_ref=self)
-                await thinking_msg.edit(embed=response_embed, view=view)
+            # ── 6. Adım: "Düşünüyor..." Mesajını Kesin Güncelle ──
+            view = TicketActionsView(ticket_owner_id=owner_id, cog_ref=self)
+            await thinking_msg.edit(embed=response_embed, view=view)
 
         except Exception as e:
-            print(f"[AITicketAssistant] Mesaj yanıtlama hatası: {e}")
+            print(f"[AITicketAssistant] Mesaj güncelleme hatası: {e}")
             try:
                 error_embed = discord.Embed(
-                    title="⚠️ Destek Servisi Bilgilendirmesi",
+                    title="🛡️ Yetkili Ekibi Bilgilendirmesi",
                     description=(
-                        "Sorunuz işlenirken beklenmeyen bir hata meydana geldi.\n\n"
+                        f"Merhaba **{user_display_name}**,\n\n"
+                        "Destek talebiniz başarıyla kayıt altına alınmıştır.\n\n"
                         "🛡️ **Yetkililerimiz en kısa sürede sizinle ilgilenecektir.** "
-                        "Lütfen endişelenmeyiniz, talebiniz kayıtlarımızdadır."
+                        "Lütfen bekleyiniz, teşekkür ederiz."
                     ),
                     color=config.COLOR_LIGHT_BLUE
                 )
