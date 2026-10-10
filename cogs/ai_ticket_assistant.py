@@ -234,6 +234,40 @@ class AITicketAssistant(commands.Cog):
         if isinstance(channel, discord.TextChannel):
             await self.send_welcome_greeting(channel)
 
+    def is_complaint_or_report(self, text: str) -> bool:
+        """
+        Kullanıcının iletisinin bir üye şikayeti, rol hatası, kural ihlali veya yanlış işlem
+        bildirimi olup olmadığını tespit eder.
+        """
+        t = text.lower()
+
+        # Doğrudan şikayet ve ihlal kalıpları
+        complaint_keywords = [
+            "şikayet", "sikayet", "şikayetçi", "sikayetci", "şikayetim",
+            "rapor", "report", "troll", "trolledi", "trollüyor", "trolluyor",
+            "rdm", "vdm", "frp", "cl attı", "cl atti", "combat log",
+            "fear rp", "cop bait", "cop trigger", "nlr", "gooa", "trash talk",
+            "rol hatası", "rol hatasi", "yanlış işlem", "yanlis islem", "haksız işlem", "haksiz islem",
+            "kural ihlali", "ihlal etti", "ihlal var",
+            "öldürdü", "oldurdu", "öldürdüler", "oldurduler", "vurdu", "vurdular", "sıktı", "sikti",
+            "küfür etti", "kufur etti", "hakaret etti", "taciz etti", "dolandırdı", "dolandirdi",
+            "kanıtım var", "kanitim var", "klip var", "klibim var", "video var", "videom var", "ss var", "ss aldım",
+            "banlansın", "ban atılsın", "cezalandırılsın", "ceza verilsin", "uyarı verilsin",
+            "haksız yere", "haksiz yere", "sebepsiz yere"
+        ]
+
+        definition_queries = ["nedir", "ne demek", "anlamı ne", "nasıl yapılır", "açıklar mısın", "nelerdir"]
+        is_asking_definition = any(dq in t for dq in definition_queries)
+
+        for kw in complaint_keywords:
+            if kw in t:
+                if "şikayet" in t or "sikayet" in t or "rapor" in t or "report" in t:
+                    return True
+                if not is_asking_definition:
+                    return True
+
+        return False
+
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         """Ticket kanallarına gelen mesajları dinler ve yapay zeka ile SADECE 1 KEZ yanıtlar."""
@@ -265,7 +299,47 @@ class AITicketAssistant(commands.Cog):
 
         owner_id = self.get_ticket_owner_id(channel)
 
-        # ── 1. Adım: Açık Mavi "Düşünüyor..." Mesajını Gönder ──
+        # ── ŞİKAYET / ROL HATASI / KURAL İHLALİ KONTROLÜ ──
+        # Eğer kullanıcı bir üyeyi şikayet ettiyse veya ihlal bildirdiyse:
+        # Bot buna cevap vermez (Gemini çağrılmaz, düşünme mesajı atılmaz).
+        # Doğrudan yetkiliye yönlendirir ve kanıt talep eder!
+        if self.is_complaint_or_report(prompt_text):
+            staff_role = message.guild.get_role(config.TICKET_YETKILI_ROL_ID)
+            staff_mention = staff_role.mention if staff_role else "Yetkililer"
+
+            complaint_embed = discord.Embed(
+                title="🛡️ Piyade Roleplay | Yetkili İncelemesine Yönlendirildi",
+                description=(
+                    f"Merhaba {message.author.mention},\n\n"
+                    "İletmiş olduğunuz talep bir **üye şikayeti / rol hatası / kural ihlali** kapsamındadır.\n\n"
+                    "⚖️ **Bu işlem doğrudan yetkili ekibimiz tarafından incelenmektedir.**\n"
+                    "Yapay zeka şikayet değerlendirmesi ve ceza işlemlerine dahil olamaz.\n\n"
+                    "📌 **Lütfen yetkili ekibimiz kanala gelene kadar:**\n"
+                    "• Olayla ilgili **video kaydınızı (klip) veya ekran görüntüsü (SS)** kanıtlarınızı bu kanala yükleyiniz.\n"
+                    "• Şikayetçi olduğunuz kişinin **Roblox Adı ve Discord etiketini/ID'sini** yazınız.\n"
+                    "• Yaşanan olayı kısa ve net bir şekilde özetleyiniz.\n\n"
+                    "──────────────────────────────────────────\n"
+                    "🔔 **Yetkili kadromuza bildirim iletildi.** En kısa sürede biletinizle ilgileneceklerdir."
+                ),
+                color=config.COLOR_LIGHT_BLUE
+            )
+            if message.guild.icon:
+                complaint_embed.set_thumbnail(url=message.guild.icon.url)
+            complaint_embed.set_footer(text="Piyade Roleplay Şikayet & Disiplin Yönetimi")
+            complaint_embed.timestamp = discord.utils.utcnow()
+
+            await channel.send(
+                content=f"{staff_mention} | {message.author.mention}",
+                embed=complaint_embed,
+                view=TicketActionsView(ticket_owner_id=owner_id, cog_ref=self)
+            )
+
+            # Bu bilet için işlem tamamlandı, yapay zeka artık kanaldan çekilir
+            self.answered_channels.add(channel.id)
+            self._save_cache()
+            return
+
+        # ── 1. Adım: Bilgi Sorusuysa Açık Mavi "Düşünüyor..." Mesajını Gönder ──
         thinking_embed = discord.Embed(
             title="🤖 Piyade AI Destek Asistanı",
             description=(
