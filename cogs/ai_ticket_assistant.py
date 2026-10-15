@@ -1,13 +1,54 @@
 import os
 import json
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import discord
 from discord.ext import commands
 from discord import app_commands
 import config
 from gemini_client import GeminiClient
 from knowledge_base import get_local_knowledge_reply
+
+# Türkiye Saat Dilimi (UTC+3)
+TURKEY_TZ = timezone(timedelta(hours=3))
+
+def is_outside_working_hours() -> bool:
+    """
+    Yetkililerin çalışma saatleri dışında olup olmadığını denetler.
+    Kural: Gece 01:00'dan sonra ve öğlen 12:00'dan önce (01:00 <= saat < 12:00) mesai dışıdır.
+    Mesai saatleri: 12:00 (Öğlen) - 01:00 (Gece) arasıdır.
+    """
+    now = datetime.now(TURKEY_TZ)
+    return 1 <= now.hour < 12
+
+def get_off_hours_embed(mention_str: str = "Değerli Üyemiz", guild: discord.Guild = None) -> discord.Embed:
+    """Yetkililerin mesai saatleri dışında olduğunu bildiren şık ve zengin embed oluşturur."""
+    embed = discord.Embed(
+        title="🌙 Piyade RP Yönetimi | Çalışma Saatleri Bilgilendirmesi",
+        description=(
+            f"Merhaba {mention_str},\n\n"
+            "⏳ **Piyade Roleplay Yönetmeliği gereği şu anda yönetim ekibimiz çalışma saatleri dışındadır.** 🌙\n\n"
+            "📋 **Yönetim Ekibi Mesai Çizelgemiz:**\n"
+            "> ☀️ **Aktif Çalışma Saatleri:** `12:00 — 01:00` (Öğlen 12:00 - Gece 01:00)\n"
+            "> 🌙 **İstirahat Aralığı:** `01:00 — 12:00` (Gece 01:00 - Öğlen 12:00)\n\n"
+            "──────────────────────────────────────────\n"
+            "🤖 **Yapay Zeka Destek Asistanı 7/24 Kesintisiz Hizmetinizde!**\n"
+            "Yönetim ekibimiz istirahat saatinde olsa dahi biletiniz yanıtsız kalmaz! "
+            "Sunucu kuralları, whitelist adımları, ER:LC katılım kodu (`piyade`), oyun dinamikleri ve "
+            "tüm sistemler hakkındaki sorularınızı bana iletebilir, anında rehberlik alabilirsiniz.\n\n"
+            "📌 **Yetkili Müdahalesi Gereken Durumlar İçin:**\n"
+            "Şikayet, rol hatası veya onay gerektiren işlemleriniz için detayları ve kanıtlarınızı (video/SS) "
+            "bu kanala yazabilirsiniz. Yetkili ekibimiz mesai başlangıcında (saat **12:00**) biletinizle "
+            "öncelikli olarak ilgilenecektir.\n\n"
+            "✨ *Anlayışınız ve sabrınız için teşekkür eder, keyifli roller dileriz!*"
+        ),
+        color=config.COLOR_LIGHT_BLUE
+    )
+    if guild and guild.icon:
+        embed.set_thumbnail(url=guild.icon.url)
+    embed.set_footer(text="Piyade Roleplay • 7/24 Kesintisiz AI Destek & Yönetim")
+    embed.timestamp = discord.utils.utcnow()
+    return embed
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 ANSWERED_FILE = os.path.join(DATA_DIR, "answered_tickets.json")
@@ -64,12 +105,19 @@ class TicketActionsView(discord.ui.View):
         staff_role = guild.get_role(config.TICKET_YETKILI_ROL_ID) if guild else None
         staff_mention = staff_role.mention if staff_role else "Yetkililer"
 
+        off_hours_note = ""
+        if is_outside_working_hours():
+            off_hours_note = (
+                "\n\n> 🌙 **Mesai Uyarısı:** Piyade RP Yönetmeliği gereği şu anda yönetim ekibi çalışma saatleri (`01:00 — 12:00`) dışındadır.\n"
+                "> Bildiriminiz yetkili panelimize iletilmiştir; yetkililerimiz mesai başlangıcında (**12:00**) veya müsait olduklarında biletinize dönüş yapacaktır."
+            )
+
         embed = discord.Embed(
             title="🔔 Yetkili Bildirimi İletildi",
             description=(
                 f"{interaction.user.mention} tarafından yetkili desteği talep edildi.\n\n"
                 f"> **Görevli Kadro:** {staff_mention}\n"
-                f"> Lütfen yetkililerimiz biletinize dönüş yapana kadar sabırla bekleyiniz."
+                f"> Lütfen yetkililerimiz biletinize dönüş yapana kadar sabırla bekleyiniz.{off_hours_note}"
             ),
             color=config.COLOR_LIGHT_BLUE
         )
@@ -268,8 +316,13 @@ class AITicketAssistant(commands.Cog):
         embed.set_footer(text="Piyade RP • Yapay Zeka Destek Sistemi • Sizin İçin Buradayız")
         embed.timestamp = discord.utils.utcnow()
 
+        embeds_to_send = [embed]
+        if is_outside_working_hours():
+            off_hours_embed = get_off_hours_embed(mention_str, guild=channel.guild)
+            embeds_to_send.append(off_hours_embed)
+
         try:
-            await channel.send(content=f"{mention_str}", embed=embed)
+            await channel.send(content=f"{mention_str}", embeds=embeds_to_send)
             self.greeted_channels.add(channel.id)
             self._save_cache()
         except Exception as e:
@@ -358,6 +411,14 @@ class AITicketAssistant(commands.Cog):
             staff_role = message.guild.get_role(config.TICKET_YETKILI_ROL_ID)
             staff_mention = staff_role.mention if staff_role else "Yetkililer"
 
+            off_hours_complaint_note = ""
+            if is_outside_working_hours():
+                off_hours_complaint_note = (
+                    "\n\n> 🌙 **Yönetim Mesai Bilgilendirmesi:**\n"
+                    "> Piyade RP Yönetmeliği gereği şu anda yönetim ekibimiz çalışma saatleri (`01:00 — 12:00`) dışındadır.\n"
+                    "> Lütfen kanıtlarınızı bu kanala eksiksiz iletiniz; yetkili ekibimiz mesai başlangıcında (**12:00**) şikayetinizi öncelikli olarak işleme alacaktır."
+                )
+
             complaint_embed = discord.Embed(
                 title="🛡️ Piyade Roleplay | Yetkili İncelemesine Yönlendirildi",
                 description=(
@@ -370,7 +431,7 @@ class AITicketAssistant(commands.Cog):
                     "• Şikayetçi olduğunuz kişinin **Roblox Adı ve Discord etiketini/ID'sini** yazınız.\n"
                     "• Yaşanan olayı kısa ve net bir şekilde özetleyiniz.\n\n"
                     "──────────────────────────────────────────\n"
-                    "🔔 **Yetkili kadromuza bildirim iletildi.** En kısa sürede biletinizle ilgileneceklerdir."
+                    f"🔔 **Yetkili kadromuza bildirim iletildi.** En kısa sürede biletinizle ilgileneceklerdir.{off_hours_complaint_note}"
                 ),
                 color=config.COLOR_LIGHT_BLUE
             )
@@ -486,10 +547,17 @@ class AITicketAssistant(commands.Cog):
                 response_embed.set_thumbnail(url=message.guild.icon.url)
 
             if needs_staff and "Yetkili Ekibi Bilgilendirmesi" not in clean_reply:
+                off_hours_field_note = ""
+                if is_outside_working_hours():
+                    off_hours_field_note = (
+                        "\n> 🌙 *(Piyade RP Yönetmeliği gereği şu anda yönetim ekibi mesai saatleri dışındadır; "
+                        "talebiniz saat 12:00 mesai başlangıcında öncelikle incelenecektir.)*"
+                    )
+
                 response_embed.add_field(
                     name="🛡️ Yetkili Ekibi Bilgilendirmesi",
                     value=(
-                        "Yetkililerimiz en kısa sürede sizinle ilgilenecektir.\n"
+                        f"Yetkililerimiz en kısa sürede sizinle ilgilenecektir.{off_hours_field_note}\n"
                         "Gerekirse aşağıdaki **'Yetkili Çağır'** butonuna basarak yetkili ekibine doğrudan çağrı iletebilirsiniz."
                     ),
                     inline=False
