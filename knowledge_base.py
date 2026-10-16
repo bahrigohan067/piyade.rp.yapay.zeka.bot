@@ -125,7 +125,7 @@ Kategori 2: Sunucu Düzeni Kuralları (D):
 • 1 Ay (30 Gün) Kuralı: En son uyarı tarihinden itibaren 30 gün boyunca yeni ceza almayan üyenin ceza puanları otomatik sıfırlanır.
 
 ═══════════════════════════════════════════════════════════════════
-🎭 ROLEPLAY TERİMLERİ SÖZLÜĞÜ (RM1 - RM17 & HATALI ÖRNEKLER)
+🎭 ROLEPLAY TERİMLERİ SÖZLÜĞÜ (RM1 - RM18 & HATALI ÖRNEKLER)
 ═══════════════════════════════════════════════════════════════════
 • RM1 — Fail RP (FRP) [3 Puan]: Mantığa aykırı rol. (Hatalı: Ağır yaralıyken zıplamak, takla atan arabadan inip koşmak).
 • RM2 — Fear RP [3 Puan]: Can korkusu yapmama. (Hatalı: Başına 3 kişi silah doğrultmuşken küfür edip kaçmak).
@@ -144,6 +144,7 @@ Kategori 2: Sunucu Düzeni Kuralları (D):
 • RM15 — Kaza RP Yapmama [1 Puan]: Ağır kaza sonrası yaralanma rolü yapmadan gaza basıp gitmek.
 • RM16 — Refuse RP [2 Puan]: Başlayan geçerli rolü sebepsizce reddetmek veya AFK taklidi yapmak.
 • RM17 — Abuse [5 Puan]: Oyun açığı veya Safezone sınırlarını çatışmada suistimal etmek.
+• RM18 — SafeZone İhlali [2 Puan]: Safezone (Güvenli Bölge) sınırları içerisinde silah çekmek, çatışmaya girmek, adam vurmak veya soygun yapmak. (Hatalı: Gun Shop, Hastane veya PD önünde/içinde çatışmak veya rehin almak).
 
 ═══════════════════════════════════════════════════════════════════
 🏴‍☠️ İLLEGAL DÜNYASI, ÇETE SİSTEMİ & METH ÜRETİMİ
